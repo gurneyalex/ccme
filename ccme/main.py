@@ -38,8 +38,15 @@ class CCMe(QtGui.QMainWindow, Ui_MainWindow):
     def sendMidiCc(self, chan, cc, val):
         print(chan, cc, val)
         
+        self.midi_out.write_midi_event(time, event)
+        
     def setupJack(self):
         self.jackClient = jack.Client('CCMe')
+        self.midi_out = self.jackClient.midi_outports.register('midi_out')
+
+    def on_mainwindow_destroyed(self):
+        self.jackClient.deactivate()
+        self.jackClient.close()
 
 
 
