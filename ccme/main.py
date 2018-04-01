@@ -1,17 +1,21 @@
+#!/usr/bin/env python3
 from PyQt4 import QtGui
 from PyQt4.QtCore import QObject, pyqtSlot
 import sys
 import jack
+import struct
+import queue
 
 from .ui_mainwindow import Ui_MainWindow
 
 class CCMe(QtGui.QMainWindow, Ui_MainWindow):
+
     def __init__(self):
         super(CCMe, self).__init__()
         self.setupUi(self)
+        self.out_queue = queue.Queue()
         self.setupJack()
 
-    
     def on_btn0_clicked(self):
         self.midiCcValue.setValue(0)
 
@@ -31,23 +35,34 @@ class CCMe(QtGui.QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(int)
     def on_midiCcValue_valueChanged(self, val):
-        self.sendMidiCc(self.midiChannel.getValue(),
-                        self.midiController.getValue(),
+        self.sendMidiCc(self.midiChannel.value(),
+                        self.midiController.value(),
                         val)
 
     def sendMidiCc(self, chan, cc, val):
         print(chan, cc, val)
-        
-        self.midi_out.write_midi_event(time, event)
-        
+        event = struct.pack('>BBB', 0xb0 + chan, cc-1, val-1)
+        self.out_queue.put(event)
+
     def setupJack(self):
         self.jackClient = jack.Client('CCMe')
         self.midi_out = self.jackClient.midi_outports.register('midi_out')
+        self.jackClient.set_process_callback(self.jack_cb)
 
     def on_mainwindow_destroyed(self):
         self.jackClient.deactivate()
         self.jackClient.close()
 
+    def jack_cb(self, frames):
+        time = 0
+        try:
+            while True:
+                time += 1
+                event = self.out_queue.get(block=False)
+                self.midi_out.write_midi_event(time, event)
+        except queue.Empty:
+            pass
+        return jack.CALL_AGAIN
 
 
 
