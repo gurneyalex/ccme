@@ -7,6 +7,7 @@ import struct
 import queue
 
 from .ui_mainwindow import Ui_MainWindow
+from .midi_cc import definitions
 
 class CCMe(QtGui.QMainWindow, Ui_MainWindow):
 
@@ -31,6 +32,8 @@ class CCMe(QtGui.QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(int)
     def on_midiController_valueChanged(self, val):
+        name = definitions['%d'%val]
+        self.controllerName.setText(name)
         self.midiCcValue.setValue(0)
 
     @pyqtSlot(int)
@@ -41,13 +44,15 @@ class CCMe(QtGui.QMainWindow, Ui_MainWindow):
 
     def sendMidiCc(self, chan, cc, val):
         print(chan, cc, val)
-        event = struct.pack('>BBB', 0xb0 + chan, cc-1, val-1)
+        event = struct.pack('>BBB', 0xb0 + chan - 1, cc, val)
+        print('put')
         self.out_queue.put(event)
 
     def setupJack(self):
         self.jackClient = jack.Client('CCMe')
         self.midi_out = self.jackClient.midi_outports.register('midi_out')
         self.jackClient.set_process_callback(self.jack_cb)
+        self.jackClient.activate()
 
     def on_mainwindow_destroyed(self):
         self.jackClient.deactivate()
@@ -55,14 +60,19 @@ class CCMe(QtGui.QMainWindow, Ui_MainWindow):
 
     def jack_cb(self, frames):
         time = 0
+        self.midi_out.clear_buffer()
         try:
             while True:
                 time += 1
-                event = self.out_queue.get(block=False)
-                self.midi_out.write_midi_event(time, event)
+                event = self.out_queue.get_nowait()
+                print(time, event)
+                try:
+                    self.midi_out.write_midi_event(time, event)
+                except jack.JackError as exc:
+                    print (exc)
         except queue.Empty:
             pass
-        return jack.CALL_AGAIN
+
 
 
 
